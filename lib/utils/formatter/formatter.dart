@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:f_logs/f_logs.dart';
 import 'package:flutter/foundation.dart';
 
@@ -14,6 +16,9 @@ class Formatter {
         FormatType.FORMAT_CSV.toString()) {
       output = _formatCsv(
           log, config.csvDelimiter, config.isDevelopmentDebuggingEnabled);
+    } else if (config.formatType.toString() ==
+        FormatType.FORMAT_JSON.toString()) {
+      output = _formatJson(log, config.fieldOrderFormatCustom);
     } else if (config.formatType.toString() ==
         FormatType.FORMAT_CUSTOM.toString()) {
       output = _formatCustom(
@@ -77,8 +82,7 @@ class Formatter {
     output += log.exception != 'null' ? "${log.exception}$deliminator " : "";
     output += "${log.logLevel.toString()}$deliminator ";
     output += "${log.timestamp} ";
-    output +=
-        log.stacktrace != 'null' ? "${log.stacktrace}$deliminator " : "";
+    output += log.stacktrace != 'null' ? "${log.stacktrace}$deliminator " : "";
 
     if (isDevelopmentDebuggingEnabled) {
       output += !kReleaseMode ? "${log.dataLogType} " : "";
@@ -137,5 +141,47 @@ class Formatter {
     }
 
     return output;
+  }
+
+  static String _formatJson(
+    Log log,
+    List<FieldName> fieldOrder,
+  ) {
+    var outerMapFields = <String, dynamic>{};
+    var innerMessageFields = <String, dynamic>{};
+
+    if (fieldOrder.isNotEmpty) {
+      for (var fieldName in fieldOrder) {
+        if (fieldName == FieldName.CLASSNAME) {
+          innerMessageFields.addAll({fieldName.name: log.className});
+        }
+        if (fieldName == FieldName.METHOD_NAME) {
+          innerMessageFields.addAll({fieldName.name: log.methodName ?? ""});
+        }
+        if (fieldName == FieldName.TEXT) {
+          innerMessageFields.addAll({fieldName.name: log.text ?? ""});
+        }
+        if (fieldName == FieldName.EXCEPTION) {
+          innerMessageFields.addAll({fieldName.name: log.exception ?? ""});
+        }
+        if (fieldName == FieldName.STACKTRACE) {
+          innerMessageFields.addAll({fieldName.name: log.stacktrace ?? ""});
+        }
+
+        if (fieldName == FieldName.LOG_LEVEL) {
+          outerMapFields.addAll({'level_name': log.logLevel?.name ?? ""});
+          outerMapFields
+              .addAll({'channel': log.logLevel?.name.toLowerCase() ?? ""});
+        }
+        if (fieldName == FieldName.TIMESTAMP) {
+          outerMapFields.addAll({'datetime': log.timestamp.toString()});
+        }
+      }
+
+      final finalOutputMap = {"message": innerMessageFields, ...outerMapFields};
+      return jsonEncode(finalOutputMap);
+    }
+
+    return "";
   }
 }
