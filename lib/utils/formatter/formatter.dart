@@ -18,7 +18,7 @@ class Formatter {
           log, config.csvDelimiter, config.isDevelopmentDebuggingEnabled);
     } else if (config.formatType.toString() ==
         FormatType.FORMAT_JSON.toString()) {
-      output = _formatJson(log, config.fieldOrderFormatCustom);
+      output = _formatJson(log, config);
     } else if (config.formatType.toString() ==
         FormatType.FORMAT_CUSTOM.toString()) {
       output = _formatCustom(
@@ -145,13 +145,47 @@ class Formatter {
 
   static String _formatJson(
     Log log,
-    List<FieldName> fieldOrder,
+    LogsConfig config,
   ) {
+    return jsonEncode(formatJson(log, config));
+  }
+
+  static Map<String, dynamic> formatJson(Log log, LogsConfig config) {
     var outerMapFields = <String, dynamic>{};
     var innerMessageFields = <String, dynamic>{};
 
-    if (fieldOrder.isNotEmpty) {
-      for (var fieldName in fieldOrder) {
+    if (config.fieldOrderFormatCustom.isNotEmpty) {
+      // Split the combined data into encoded original text and encoded serialized map
+      List<String> parts = log.text!.split('||');
+      String encodedOriginalText = parts[0];
+      String? encodedMap;
+      try {
+        encodedMap = parts[1];
+      } catch (e, s) {
+        if (kDebugMode) {
+          print(s);
+        }
+      }
+
+      // Decode the original text and serialized map
+      String originalText;
+      try {
+        originalText = utf8.decode(base64Decode(encodedOriginalText));
+      } catch (e) {
+        //If base64Decode throws an error, It means that the original text was not encoded.
+        originalText = encodedOriginalText;
+      }
+      Map<String, dynamic> mapArguments = {};
+      if (encodedMap != null) {
+        try {
+          mapArguments = jsonDecode(utf8.decode(base64Decode(encodedMap)));
+        } catch (e) {
+          //If base64Decode throws an error, it means that the map was not encoded.
+          mapArguments = jsonDecode(encodedMap);
+        }
+      }
+
+      for (var fieldName in config.fieldOrderFormatCustom) {
         if (fieldName == FieldName.CLASSNAME) {
           innerMessageFields.addAll({fieldName.name: log.className});
         }
@@ -159,7 +193,7 @@ class Formatter {
           innerMessageFields.addAll({fieldName.name: log.methodName ?? ""});
         }
         if (fieldName == FieldName.TEXT) {
-          innerMessageFields.addAll({fieldName.name: log.text ?? ""});
+          innerMessageFields.addAll({fieldName.name: originalText});
         }
         if (fieldName == FieldName.EXCEPTION) {
           innerMessageFields.addAll({fieldName.name: log.exception ?? ""});
@@ -172,6 +206,7 @@ class Formatter {
           outerMapFields.addAll({'level_name': log.logLevel?.name ?? ""});
           outerMapFields
               .addAll({'channel': log.logLevel?.name.toLowerCase() ?? ""});
+          outerMapFields.addAll({'extra': mapArguments});
         }
         if (fieldName == FieldName.TIMESTAMP) {
           outerMapFields.addAll({'datetime': log.timestamp.toString()});
@@ -179,9 +214,8 @@ class Formatter {
       }
 
       final finalOutputMap = {"message": innerMessageFields, ...outerMapFields};
-      return jsonEncode(finalOutputMap);
+      return finalOutputMap;
     }
-
-    return "";
+    return {};
   }
 }
